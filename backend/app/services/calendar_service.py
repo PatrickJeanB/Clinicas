@@ -1,0 +1,1 @@
+# Coordena Supabase + Google Calendar
