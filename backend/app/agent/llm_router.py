@@ -12,7 +12,7 @@ _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
 _TASK_MODELS: dict[str, str] = {
     "classify": "openai/gpt-4o-mini",
-    "respond": "anthropic/claude-3.5-sonnet",
+    "respond": "anthropic/claude-sonnet-4-5",
     "summarize": "openai/gpt-4o-mini",
 }
 
