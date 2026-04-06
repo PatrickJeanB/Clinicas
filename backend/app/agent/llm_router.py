@@ -31,7 +31,7 @@ class LLMRouter:
             base_url=_OPENROUTER_BASE,
             default_headers={
                 "HTTP-Referer": "https://clinicas.app",
-                "X-Title": "Karen - Secretária IA",
+                "X-Title": "Karen - Secretaria IA",
             },
         )
         self._oai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
