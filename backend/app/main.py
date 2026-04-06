@@ -17,8 +17,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Karen - Secretária IA",
-    description="Backend da secretária de IA para clínicas de psicologia via WhatsApp",
+    title="Karen - Secretaria IA",
+    description="Backend da secretaria de IA para clinicas de psicologia via WhatsApp",
     version="0.1.0",
     lifespan=lifespan,
 )
