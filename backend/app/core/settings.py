@@ -31,5 +31,16 @@ class Settings(BaseSettings):
     # Criptografia
     ENCRYPTION_KEY: str
 
+    # WhatsApp / Meta
+    META_APP_SECRET: str
+    META_VERIFY_TOKEN: str
+    WHATSAPP_TOKEN: str
+    WHATSAPP_PHONE_NUMBER_ID: str
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str
+
+    # Google Calendar
+    GOOGLE_CALENDAR_ID: str
+    GOOGLE_CREDENTIALS_PATH: str
+
 
 settings = Settings()
