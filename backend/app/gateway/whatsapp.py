@@ -22,6 +22,13 @@ class WhatsAppGateway:
     # Envio
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_br_phone(number: str) -> str:
+        """Insere o nono dígito em números brasileiros de 12 dígitos (55 + DDD + 8 dígitos)."""
+        if number.startswith("55") and len(number) == 12:
+            return number[:4] + "9" + number[4:]
+        return number
+
     @retry(
         retry=retry_if_exception_type((httpx.HTTPError, WhatsAppError)),
         stop=stop_after_attempt(3),
@@ -29,6 +36,7 @@ class WhatsAppGateway:
         reraise=True,
     )
     async def send_text(self, to: str, message: str) -> bool:
+        to = self._normalize_br_phone(to)
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
