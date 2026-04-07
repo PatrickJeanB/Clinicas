@@ -135,13 +135,13 @@ _TOOLS: list[dict] = [
 # ------------------------------------------------------------------
 
 
-class KarenAgent:
+class ClinicAgent:
     async def process(self, phone: str, messages: list[dict]) -> None:
         """
         Ponto de entrada chamado pelo MessageBuffer.
         messages: lista de parsed dicts vindos do WhatsApp.
         """
-        logger.info(f"[Karen] processando {len(messages)} mensagem(ns) de {phone}")
+        logger.info(f"[Agent] processando {len(messages)} mensagem(ns) de {phone}")
 
         # 1. Contexto
         ctx = await context_builder.build(phone)
@@ -152,7 +152,7 @@ class KarenAgent:
             name = _extract_name_hint(messages)
             patient, created = await patient_service.get_or_create(phone, name)
             if created:
-                logger.info(f"[Karen] novo paciente cadastrado: {phone}")
+                logger.info(f"[Agent] novo paciente cadastrado: {phone}")
             ctx["patient"] = patient
 
         # 3. Salva mensagens inbound no banco
@@ -195,7 +195,7 @@ class KarenAgent:
 
             # Resposta final em texto
             if isinstance(result, str):
-                logger.debug(f"[Karen] resposta final obtida (round {round_n + 1})")
+                logger.debug(f"[Agent] resposta final obtida (round {round_n + 1})")
                 return result
 
             # Tool calls — executa e continua o loop
@@ -223,7 +223,7 @@ class KarenAgent:
             )
             messages.extend(tool_result_msgs)
 
-        logger.warning(f"[Karen] limite de {_MAX_TOOL_ROUNDS} rounds de tools atingido")
+        logger.warning(f"[Agent] limite de {_MAX_TOOL_ROUNDS} rounds de tools atingido")
         return "Desculpe, tive um problema para processar sua solicitação. Pode repetir?"
 
     # ------------------------------------------------------------------
@@ -247,13 +247,13 @@ class KarenAgent:
         phone: str,
         patient: dict,
     ) -> dict:
-        logger.info(f"[Karen] tool={name} args={args}")
+        logger.info(f"[Agent] tool={name} args={args}")
         try:
             output = await self._dispatch(name, args, phone, patient)
         except (PatientNotFoundError, AppointmentConflictError) as exc:
             output = {"error": exc.message}
         except Exception as exc:
-            logger.exception(f"[Karen] erro na tool {name}: {exc}")
+            logger.exception(f"[Agent] erro na tool {name}: {exc}")
             output = {"error": str(exc)}
 
         return {
@@ -322,7 +322,7 @@ class KarenAgent:
                 content=message,
                 message_type="text",
             )
-            logger.debug(f"[Karen] bloco enviado → {phone} ({len(message)} chars)")
+            logger.debug(f"[Agent] bloco enviado → {phone} ({len(message)} chars)")
 
 
 # ------------------------------------------------------------------
@@ -372,12 +372,12 @@ async def _save_inbound(patient_id: str, msg: dict) -> None:
             whatsapp_message_id=msg.get("message_id"),
         )
     except Exception as exc:
-        logger.warning(f"[Karen] falha ao salvar mensagem inbound: {exc}")
+        logger.warning(f"[Agent] falha ao salvar mensagem inbound: {exc}")
 
 
 # ------------------------------------------------------------------
 # Singleton + registro no buffer
 # ------------------------------------------------------------------
 
-karen_agent = KarenAgent()
-message_buffer.set_handler(karen_agent.process)
+clinic_agent = ClinicAgent()
+message_buffer.set_handler(clinic_agent.process)

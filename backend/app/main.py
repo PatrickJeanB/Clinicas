@@ -11,14 +11,14 @@ from app.core.settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Iniciando Karen — ambiente: {settings.APP_ENV}")
+    logger.info(f"Iniciando {settings.APP_NAME} — ambiente: {settings.APP_ENV}")
     yield
-    logger.info("Encerrando Karen")
+    logger.info(f"Encerrando {settings.APP_NAME}")
 
 
 app = FastAPI(
-    title="Karen - Secretaria IA",
-    description="Backend da secretaria de IA para clinicas de psicologia via WhatsApp",
+    title="AppClinicas - Secretaria IA",
+    description="Backend da secretaria de IA para clínicas via WhatsApp",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -58,4 +58,4 @@ app.include_router(webhook.router)
 app.include_router(doctor.router, prefix="/doctor")
 
 # Inicializa o agente — registra handler no buffer
-from app.agent import karen  # noqa: E402, F401
+from app.agent import agent  # noqa: E402, F401

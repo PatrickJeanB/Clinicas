@@ -43,11 +43,11 @@ def get_whatsapp():
     return whatsapp_gateway
 
 
-# ── Karen Agent ────────────────────────────────────────────────────────
-def get_karen():
+# ── Clinic Agent ───────────────────────────────────────────────────────
+def get_clinic_agent():
     """
-    Retorna o singleton KarenAgent.
-    Import lazy obrigatório: karen → repos → dependencies (evita ciclo).
+    Retorna o singleton ClinicAgent.
+    Import lazy obrigatório: agent → repos → dependencies (evita ciclo).
     """
-    from app.agent.karen import karen_agent  # noqa: PLC0415
-    return karen_agent
+    from app.agent.agent import clinic_agent  # noqa: PLC0415
+    return clinic_agent
