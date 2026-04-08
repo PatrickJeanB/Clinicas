@@ -88,7 +88,7 @@ def _verify_signature(body: bytes, signature_header: str, clinic_cfg: dict) -> b
         try:
             app_secret = decrypt(raw_secret)
         except Exception:
-            app_secret = settings.META_APP_SECRET
+            app_secret = raw_secret  # secret em texto puro (ambiente de desenvolvimento)
     else:
         app_secret = settings.META_APP_SECRET
 

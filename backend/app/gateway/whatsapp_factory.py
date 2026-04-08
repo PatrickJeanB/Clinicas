@@ -21,8 +21,13 @@ class WhatsAppClientFactory:
         if not creds or not creds.get("token") or not creds.get("phone_id"):
             raise ValueError(f"Credenciais WhatsApp não configuradas para clinic_id={clinic_id}")
 
-        token    = decrypt(creds["token"])
-        phone_id = creds["phone_id"]   # phone_id não é criptografado
+        raw_token = creds["token"]
+        try:
+            token = decrypt(raw_token)
+        except Exception:
+            token = raw_token  # token em texto puro (ambiente de desenvolvimento)
+
+        phone_id = creds["phone_id"]  # phone_id não é criptografado
 
         gateway = WhatsAppGateway(token=token, phone_id=phone_id)
         self._cache[clinic_id] = gateway
