@@ -29,7 +29,6 @@ def system_prompt(
     patient: dict | None,
     upcoming_appointments: list[dict],
     ai_name: str = "Assistente",
-    clinic_info: dict | None = None,
     clinic_settings: dict | None = None,
 ) -> str:
     now = datetime.now(_BR_TZ)
@@ -39,7 +38,6 @@ def system_prompt(
 
     patient_block = _build_patient_block(patient)
     appointments_block = _build_appointments_block(upcoming_appointments)
-    clinic_block = _build_clinic_block(clinic_info)
     schedule_block = _build_schedule_block(clinic_settings)
 
     return f"""Você é {ai_name}, a secretária virtual da clínica de psicologia. Você atende exclusivamente pelo WhatsApp.
@@ -66,8 +64,6 @@ def system_prompt(
 - Enviar lembretes e confirmações
 
 {schedule_block}
-
-{clinic_block}
 
 ## Data e hora atual
 - {date_str}, {time_str}
@@ -149,11 +145,3 @@ def _build_schedule_block(clinic_settings: dict | None) -> str:
     )
 
 
-def _build_clinic_block(clinic_info: dict | None) -> str:
-    if not clinic_info:
-        return ""
-
-    lines = ["## Informações da clínica"]
-    for key, value in clinic_info.items():
-        lines.append(f"- {key}: {value}")
-    return "\n".join(lines)

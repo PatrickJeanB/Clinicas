@@ -73,7 +73,7 @@ class AppointmentRepo:
         )
         return response.data
 
-    async def list_by_date(self, date: str, clinic_id: str) -> list[Appointment]:
+    async def list_by_date(self, date: str, clinic_id: str, limit: int = 100) -> list[Appointment]:
         """date: formato YYYY-MM-DD"""
         client = await self._client()
         next_day = (datetime.fromisoformat(date) + timedelta(days=1)).date().isoformat()
@@ -84,6 +84,7 @@ class AppointmentRepo:
             .gte("datetime", date)
             .lt("datetime", next_day)
             .order("datetime")
+            .limit(limit)
             .execute()
         )
         return response.data

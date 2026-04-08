@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from gotrue.errors import AuthApiError
 from pydantic import BaseModel, EmailStr, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -82,9 +83,12 @@ async def login(request: Request, body: LoginRequest) -> dict:
         auth_response = await client.auth.sign_in_with_password(
             {"email": body.email, "password": body.password}
         )
-    except Exception as exc:
-        logger.warning(f"[Auth] falha no login: {body.email} — {exc}")
+    except AuthApiError as exc:
+        logger.warning(f"[Auth] credenciais inválidas: {body.email} — {exc}")
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    except Exception as exc:
+        logger.exception(f"[Auth] erro inesperado no login para {body.email}: {exc}")
+        raise HTTPException(status_code=503, detail="Serviço temporariamente indisponível")
 
     session = auth_response.session
     user    = auth_response.user

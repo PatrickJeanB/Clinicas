@@ -30,13 +30,14 @@ class BlockedDateRepo:
         )
         return len(response.data) > 0
 
-    async def list_all(self, clinic_id: str) -> list[BlockedDate]:
+    async def list_all(self, clinic_id: str, limit: int = 400) -> list[BlockedDate]:
         client = await self._client()
         response = (
             await client.table("blocked_dates")
             .select("*")
             .eq("clinic_id", clinic_id)
             .order("date")
+            .limit(limit)
             .execute()
         )
         return response.data

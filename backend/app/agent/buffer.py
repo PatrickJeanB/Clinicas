@@ -78,13 +78,17 @@ class MessageBuffer:
         self._timers[key] = task
 
     async def _fire_after_window(self, phone: str, clinic_id: str) -> None:
+        key = (clinic_id, phone)
+        current = asyncio.current_task()
         try:
             await asyncio.sleep(_WINDOW_SECS)
         except asyncio.CancelledError:
             return  # timer foi resetado — não processa ainda
         finally:
-            # Limpa a entry do dict independente de como o timer terminou
-            self._timers.pop((clinic_id, phone), None)
+            # Só remove se esta task ainda é a entrada vigente no dict.
+            # Se _reset_timer já colocou uma task nova, não toca.
+            if self._timers.get(key) is current:
+                self._timers.pop(key, None)
 
         logger.debug(f"[Buffer] janela de {_WINDOW_SECS}s expirada para {phone} clinic={clinic_id}")
         messages = await self.get_messages(phone, clinic_id)

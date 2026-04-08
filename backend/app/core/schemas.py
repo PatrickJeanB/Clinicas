@@ -7,10 +7,6 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-# ── Constante de mascaramento ──────────────────────────────────────────────
-_MASKED = "****configurado****"
-
-
 # ── Configurações da clínica ───────────────────────────────────────────────
 
 class WhatsAppStatusResponse(BaseModel):

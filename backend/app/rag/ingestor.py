@@ -45,35 +45,28 @@ async def ingest_text(title: str, content: str, clinic_id: str) -> Document:
     # Gera todos os embeddings em paralelo
     embeddings = await asyncio.gather(*[llm_router.embed(chunk) for chunk in chunks])
 
-    first_doc: Document | None = None
-
-    for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        result = await (
-            supabase.table("documents")
-            .insert(
-                {
-                    "clinic_id": clinic_id,
-                    "title": title,
-                    "content": chunk,
-                    "chunk_index": idx,
-                    "embedding": embedding,
-                }
-            )
-            .execute()
-        )
-        row = result.data[0]
-        doc: Document = {
-            "id": row["id"],
-            "title": row["title"],
-            "content": row["content"],
-            "chunk_index": row["chunk_index"],
-            "created_at": row["created_at"],
+    # Insert em batch — único roundtrip ao banco
+    rows = [
+        {
+            "clinic_id": clinic_id,
+            "title": title,
+            "content": chunk,
+            "chunk_index": idx,
+            "embedding": embedding,
         }
-        if first_doc is None:
-            first_doc = doc
-        logger.info(f"[RAG] ingerido chunk {idx + 1}/{len(chunks)} — {title!r}")
+        for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+    ]
+    result = await supabase.table("documents").insert(rows).execute()
+    logger.info(f"[RAG] ingeridos {len(rows)} chunk(s) — {title!r} clinic={clinic_id}")
 
-    return first_doc  # type: ignore[return-value]
+    row = result.data[0]
+    return Document(
+        id=row["id"],
+        title=row["title"],
+        content=row["content"],
+        chunk_index=row["chunk_index"],
+        created_at=row["created_at"],
+    )
 
 
 async def ingest_file(file_path: str, clinic_id: str) -> list[Document]:
@@ -103,35 +96,30 @@ async def ingest_file(file_path: str, clinic_id: str) -> list[Document]:
     # Gera todos os embeddings em paralelo
     embeddings = await asyncio.gather(*[llm_router.embed(chunk) for chunk in chunks])
 
-    docs: list[Document] = []
+    # Insert em batch — único roundtrip ao banco
+    rows = [
+        {
+            "clinic_id": clinic_id,
+            "title": title,
+            "content": chunk,
+            "chunk_index": idx,
+            "embedding": embedding,
+        }
+        for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+    ]
+    result = await supabase.table("documents").insert(rows).execute()
+    logger.info(f"[RAG] ingeridos {len(rows)} chunk(s) — {title!r} clinic={clinic_id}")
 
-    for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        result = await (
-            supabase.table("documents")
-            .insert(
-                {
-                    "clinic_id": clinic_id,
-                    "title": title,
-                    "content": chunk,
-                    "chunk_index": idx,
-                    "embedding": embedding,
-                }
-            )
-            .execute()
+    return [
+        Document(
+            id=row["id"],
+            title=row["title"],
+            content=row["content"],
+            chunk_index=row["chunk_index"],
+            created_at=row["created_at"],
         )
-        row = result.data[0]
-        docs.append(
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "content": row["content"],
-                "chunk_index": row["chunk_index"],
-                "created_at": row["created_at"],
-            }
-        )
-        logger.info(f"[RAG] ingerido chunk {idx + 1}/{len(chunks)} — {title!r}")
-
-    return docs
+        for row in result.data
+    ]
 
 
 def _read_pdf(path: pathlib.Path) -> str:
