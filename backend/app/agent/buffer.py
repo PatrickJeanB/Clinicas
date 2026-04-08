@@ -82,6 +82,9 @@ class MessageBuffer:
             await asyncio.sleep(_WINDOW_SECS)
         except asyncio.CancelledError:
             return  # timer foi resetado — não processa ainda
+        finally:
+            # Limpa a entry do dict independente de como o timer terminou
+            self._timers.pop((clinic_id, phone), None)
 
         logger.debug(f"[Buffer] janela de {_WINDOW_SECS}s expirada para {phone} clinic={clinic_id}")
         messages = await self.get_messages(phone, clinic_id)

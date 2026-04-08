@@ -2,7 +2,8 @@
 import json
 from typing import Any
 
-from openai import AsyncOpenAI
+import httpx
+from openai import APIConnectionError, AsyncOpenAI, RateLimitError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.logging import logger
@@ -16,8 +17,9 @@ _TASK_MODELS: dict[str, str] = {
     "summarize": "openai/gpt-4o-mini",
 }
 
+# Apenas erros transientes justificam retry — erros 4xx (bad request, etc.) não
 _RETRY_KWARGS = dict(
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception_type((httpx.HTTPStatusError, APIConnectionError, RateLimitError)),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     reraise=True,

@@ -5,6 +5,8 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.agent.buffer import message_buffer
 from app.core.encryption import decrypt
@@ -13,6 +15,7 @@ from app.gateway.whatsapp import WhatsAppGateway
 from app.repositories.clinic_settings_repo import clinic_settings_repo
 
 router = APIRouter()
+_limiter = Limiter(key_func=get_remote_address)
 
 
 # ------------------------------------------------------------------
@@ -53,6 +56,7 @@ async def webhook_verify(request: Request) -> str:
 # ------------------------------------------------------------------
 
 @router.post("/webhook")
+@_limiter.limit("100/minute")
 async def webhook_receive(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -96,15 +100,18 @@ async def webhook_receive(
 
 def _verify_signature(body: bytes, signature_header: str, clinic_cfg: dict) -> bool:
     raw_secret = clinic_cfg.get("whatsapp_app_secret")
+    clinic_id = clinic_cfg.get("clinic_id")
+
     if not raw_secret:
-        # app_secret não configurado — loga e permite (clínica sem HMAC ativo)
-        logger.warning(f"[Webhook] app_secret ausente para clinic_id={clinic_cfg.get('clinic_id')}")
-        return True
+        logger.error(f"[Webhook] app_secret ausente — rejeitando request para clinic_id={clinic_id}")
+        return False
 
     try:
         app_secret = decrypt(raw_secret)
-    except Exception:
-        app_secret = raw_secret  # armazenado em texto puro (dev sem criptografia ainda)
+    except Exception as exc:
+        raise ValueError(
+            f"Falha ao descriptografar app_secret para clinic_id={clinic_id}"
+        ) from exc
 
     expected = "sha256=" + hmac.new(
         app_secret.encode(),

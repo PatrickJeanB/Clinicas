@@ -68,7 +68,7 @@ class PatientRepo:
             raise PatientNotFoundError(id)
         return response.data[0]
 
-    async def list_active(self, clinic_id: str) -> list[Patient]:
+    async def list_active(self, clinic_id: str, limit: int = 100) -> list[Patient]:
         client = await self._client()
         response = (
             await client.table("patients")
@@ -76,6 +76,7 @@ class PatientRepo:
             .eq("clinic_id", clinic_id)
             .eq("is_active", True)
             .order("name")
+            .limit(limit)
             .execute()
         )
         return response.data

@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     # Criptografia
     ENCRYPTION_KEY: str
 
-    # Multi-tenant
-    DEFAULT_CLINIC_ID: str = "00000000-0000-0000-0000-000000000001"
+    # Google Calendar (JSON do service account em base64 ou string JSON raw)
+    GOOGLE_SERVICE_ACCOUNT_JSON: str | None = None
+
+    # Frontend URL (necessário para CORS em produção)
+    FRONTEND_URL: str = ""
 
 
 settings = Settings()

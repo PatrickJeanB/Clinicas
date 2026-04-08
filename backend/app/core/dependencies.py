@@ -3,21 +3,29 @@ import redis.asyncio as aioredis
 from supabase._async.client import AsyncClient
 from supabase._async.client import create_client as acreate_client
 
+from app.core.logging import logger
 from app.core.settings import settings
 
 # ── Supabase ──────────────────────────────────────────────────────────
 _supabase: AsyncClient | None = None
 
 
+async def init_supabase() -> None:
+    """Inicializa o cliente Supabase. Chamado no lifespan do app."""
+    global _supabase
+    _supabase = await acreate_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_SERVICE_ROLE_KEY,
+    )
+    logger.info("[Dependencies] Supabase client inicializado")
+
+
 async def get_supabase() -> AsyncClient:
     """Retorna o cliente Supabase async (singleton)."""
-    global _supabase
     if _supabase is None:
-        _supabase = await acreate_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY,
-        )
-    return _supabase
+        # Fallback para testes e scripts que não usam lifespan
+        await init_supabase()
+    return _supabase  # type: ignore[return-value]
 
 
 # ── Redis ──────────────────────────────────────────────────────────────

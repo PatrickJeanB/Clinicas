@@ -58,7 +58,8 @@ class ContextBuilder:
 async def _safe_upcoming(phone: str, clinic_id: str) -> list:
     try:
         return await appointment_service.list_upcoming(phone, clinic_id)
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"[Context] falha ao buscar consultas futuras para {phone} clinic={clinic_id}: {exc}")
         return []
 
 

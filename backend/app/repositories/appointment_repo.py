@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import TypedDict
 
+from postgrest.exceptions import APIError
 from supabase._async.client import AsyncClient
 
 from app.core.dependencies import get_supabase
@@ -38,7 +39,9 @@ class AppointmentRepo:
         )
         return response.data[0] if response.data else None
 
-    async def list_by_patient(self, patient_id: str, clinic_id: str) -> list[Appointment]:
+    async def list_by_patient(
+        self, patient_id: str, clinic_id: str, limit: int = 50
+    ) -> list[Appointment]:
         client = await self._client()
         response = (
             await client.table("appointments")
@@ -46,6 +49,26 @@ class AppointmentRepo:
             .eq("clinic_id", clinic_id)
             .eq("patient_id", patient_id)
             .order("datetime", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data
+
+    async def list_upcoming_by_patient(
+        self, patient_id: str, clinic_id: str, limit: int = 10
+    ) -> list[Appointment]:
+        """Retorna próximas consultas filtradas no banco — sem full scan."""
+        client = await self._client()
+        now_iso = datetime.now().isoformat()
+        response = (
+            await client.table("appointments")
+            .select("*")
+            .eq("clinic_id", clinic_id)
+            .eq("patient_id", patient_id)
+            .gte("datetime", now_iso)
+            .neq("status", "cancelled")
+            .order("datetime")
+            .limit(limit)
             .execute()
         )
         return response.data
@@ -67,11 +90,17 @@ class AppointmentRepo:
 
     async def create(self, clinic_id: str, **kwargs) -> Appointment:
         client = await self._client()
-        response = (
-            await client.table("appointments")
-            .insert({"clinic_id": clinic_id, **kwargs})
-            .execute()
-        )
+        try:
+            response = (
+                await client.table("appointments")
+                .insert({"clinic_id": clinic_id, **kwargs})
+                .execute()
+            )
+        except APIError as exc:
+            # Código 23505 = unique_violation (constraint uq_appointments_clinic_datetime_active)
+            if "23505" in str(exc):
+                raise AppointmentConflictError(str(kwargs.get("datetime", ""))) from exc
+            raise
         return response.data[0]
 
     async def update(self, id: str, clinic_id: str, **kwargs) -> Appointment:

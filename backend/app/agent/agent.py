@@ -170,6 +170,7 @@ class ClinicAgent:
             patient=ctx["patient"],
             upcoming_appointments=ctx["upcoming_appointments"],
             ai_name=clinic_cfg.get("ai_name", "Assistente"),
+            clinic_settings=clinic_cfg,
         )
 
         # 6. Loop de tool use
@@ -229,8 +230,9 @@ class ClinicAgent:
             )
             messages.extend(tool_result_msgs)
 
-        logger.warning(f"[Agent] limite de {_MAX_TOOL_ROUNDS} rounds de tools atingido")
-        return "Desculpe, tive um problema para processar sua solicitação. Pode repetir?"
+        logger.warning(f"[Agent] limite de {_MAX_TOOL_ROUNDS} rounds de tools atingido — gerando resposta final")
+        final = await llm_router.complete(task="respond", messages=messages, tools=None)
+        return final if isinstance(final, str) else "Desculpe, tive um problema para processar sua solicitação. Pode repetir?"
 
     # ------------------------------------------------------------------
     # Execução de ferramentas
@@ -322,12 +324,10 @@ class ClinicAgent:
         blocks = split_response(text)
         timed = add_delay(blocks)
 
-        wapp = await whatsapp_factory.get_client(clinic_id)
-
         for message, delay in timed:
             if delay > 0:
                 await asyncio.sleep(delay)
-            await wapp.send_text(phone, message)
+            await whatsapp_factory.send_text_safe(clinic_id, phone, message)
             await message_repo.save(
                 patient_id=patient_id,
                 clinic_id=clinic_id,

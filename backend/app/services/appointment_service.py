@@ -110,13 +110,7 @@ class AppointmentService:
         if not patient:
             raise PatientNotFoundError(patient_phone)
 
-        now_iso = datetime.now().isoformat()
-        all_appts = await appointment_repo.list_by_patient(patient["id"], clinic_id)
-
-        return [
-            a for a in all_appts
-            if a["datetime"] >= now_iso and a["status"] != "cancelled"
-        ]
+        return await appointment_repo.list_upcoming_by_patient(patient["id"], clinic_id)
 
 
 appointment_service = AppointmentService()

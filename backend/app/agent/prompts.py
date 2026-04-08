@@ -14,12 +14,23 @@ _WEEKDAYS_PT = {
     6: "domingo",
 }
 
+_WEEKDAY_LABELS: dict[str, str] = {
+    "monday":    "segunda-feira",
+    "tuesday":   "terça-feira",
+    "wednesday": "quarta-feira",
+    "thursday":  "quinta-feira",
+    "friday":    "sexta-feira",
+    "saturday":  "sábado",
+    "sunday":    "domingo",
+}
+
 
 def system_prompt(
     patient: dict | None,
     upcoming_appointments: list[dict],
     ai_name: str = "Assistente",
     clinic_info: dict | None = None,
+    clinic_settings: dict | None = None,
 ) -> str:
     now = datetime.now(_BR_TZ)
     weekday = _WEEKDAYS_PT[now.weekday()]
@@ -29,6 +40,7 @@ def system_prompt(
     patient_block = _build_patient_block(patient)
     appointments_block = _build_appointments_block(upcoming_appointments)
     clinic_block = _build_clinic_block(clinic_info)
+    schedule_block = _build_schedule_block(clinic_settings)
 
     return f"""Você é {ai_name}, a secretária virtual da clínica de psicologia. Você atende exclusivamente pelo WhatsApp.
 
@@ -53,11 +65,7 @@ def system_prompt(
 - Responder dúvidas sobre a clínica (localização, valores, formas de pagamento)
 - Enviar lembretes e confirmações
 
-## Horário de funcionamento
-- Segunda a sexta: 8h às 18h
-- Sábado e domingo: fechado
-- Consultas com duração de 50 minutos
-- Intervalo de 10 minutos entre consultas
+{schedule_block}
 
 {clinic_block}
 
@@ -109,6 +117,36 @@ def _build_appointments_block(appointments: list[dict]) -> str:
         lines.append(f"- {formatted} ({status_label})")
 
     return "\n".join(lines)
+
+
+def _build_schedule_block(clinic_settings: dict | None) -> str:
+    if not clinic_settings:
+        return (
+            "## Horário de funcionamento\n"
+            "- Segunda a sexta: 8h às 18h\n"
+            "- Sábado e domingo: fechado\n"
+            "- Consultas com duração de 50 minutos\n"
+            "- Intervalo de 10 minutos entre consultas"
+        )
+
+    working_days: list[str] = clinic_settings.get("working_days") or []
+    working_start: str = clinic_settings.get("working_start") or "08:00"
+    working_end: str = clinic_settings.get("working_end") or "18:00"
+    duration: int = clinic_settings.get("appointment_duration") or 50
+
+    if working_days:
+        days_pt = [_WEEKDAY_LABELS.get(d, d) for d in working_days]
+        days_str = ", ".join(days_pt[:-1]) + (" e " + days_pt[-1] if len(days_pt) > 1 else days_pt[0])
+    else:
+        days_str = "segunda a sexta"
+
+    return (
+        "## Horário de funcionamento\n"
+        f"- Dias de atendimento: {days_str}\n"
+        f"- Horário: {working_start} às {working_end}\n"
+        f"- Consultas com duração de {duration} minutos\n"
+        "- Intervalo de 10 minutos entre consultas"
+    )
 
 
 def _build_clinic_block(clinic_info: dict | None) -> str:

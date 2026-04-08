@@ -136,13 +136,12 @@ class OnboardingService:
             "Duração das consultas: 50 minutos\n"
         )
         try:
-            await client.table("documents").insert(
-                {
-                    "clinic_id": clinic_id,
-                    "name":      "Informações da clínica",
-                    "content":   content,
-                }
-            ).execute()
+            from app.rag.ingestor import ingest_text  # noqa: PLC0415
+            await ingest_text(
+                title="Informações da clínica",
+                content=content,
+                clinic_id=clinic_id,
+            )
             logger.info(f"[Onboarding] documento RAG inicial criado para clinic_id={clinic_id}")
         except Exception as exc:
             # Não falha o onboarding por causa do RAG
