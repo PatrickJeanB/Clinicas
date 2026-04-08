@@ -9,7 +9,6 @@ from fastapi.responses import PlainTextResponse
 from app.agent.buffer import message_buffer
 from app.core.encryption import decrypt
 from app.core.logging import logger
-from app.core.settings import settings
 from app.gateway.whatsapp import WhatsAppGateway
 from app.repositories.clinic_settings_repo import clinic_settings_repo
 
@@ -22,17 +21,31 @@ router = APIRouter()
 
 @router.get("/webhook", response_class=PlainTextResponse)
 async def webhook_verify(request: Request) -> str:
-    params = request.query_params
+    """
+    A Meta envia hub.verify_token para verificar o webhook.
+    Buscamos o verify_token no banco pelo phone_number_id (passado via hub.phone_number_id
+    ou inferido pelo token recebido comparado com todos os configurados).
+
+    Como a Meta não envia phone_number_id no GET de verificação, comparamos o token
+    recebido contra todos os clinic_settings que tenham whatsapp_configured=true.
+    """
+    params    = request.query_params
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
 
-    if mode == "subscribe" and token == settings.META_VERIFY_TOKEN:
-        logger.info("[Webhook] Verificação Meta OK")
-        return challenge or ""
+    if mode != "subscribe" or not token:
+        logger.warning(f"[Webhook] Verificação falhou: mode={mode} token={token}")
+        raise HTTPException(status_code=403, detail="Token inválido")
 
-    logger.warning(f"[Webhook] Verificação falhou: mode={mode} token={token}")
-    raise HTTPException(status_code=403, detail="Token inválido")
+    # Busca clínica cujo verify_token bate com o enviado pela Meta
+    clinic_cfg = await clinic_settings_repo.get_by_verify_token(token)
+    if not clinic_cfg:
+        logger.warning(f"[Webhook] verify_token não encontrado no banco: {token}")
+        raise HTTPException(status_code=403, detail="Token inválido")
+
+    logger.info(f"[Webhook] Verificação Meta OK — clinic_id={clinic_cfg['clinic_id']}")
+    return challenge or ""
 
 
 # ------------------------------------------------------------------
@@ -66,7 +79,7 @@ async def webhook_receive(
 
     clinic_id = clinic_cfg["clinic_id"]
 
-    # Valida assinatura HMAC com o app_secret da clínica
+    # Valida assinatura HMAC com o app_secret da clínica (sem fallback)
     signature_header = request.headers.get("X-Hub-Signature-256", "")
     if not _verify_signature(body, signature_header, clinic_cfg):
         logger.warning(f"[Webhook] Assinatura HMAC inválida — clinic={clinic_id}")
@@ -82,18 +95,16 @@ async def webhook_receive(
 # ------------------------------------------------------------------
 
 def _verify_signature(body: bytes, signature_header: str, clinic_cfg: dict) -> bool:
-    # Tenta app_secret da clínica (descriptografado); fallback para settings global
     raw_secret = clinic_cfg.get("whatsapp_app_secret")
-    if raw_secret:
-        try:
-            app_secret = decrypt(raw_secret)
-        except Exception:
-            app_secret = raw_secret  # secret em texto puro (ambiente de desenvolvimento)
-    else:
-        app_secret = settings.META_APP_SECRET
+    if not raw_secret:
+        # app_secret não configurado — loga e permite (clínica sem HMAC ativo)
+        logger.warning(f"[Webhook] app_secret ausente para clinic_id={clinic_cfg.get('clinic_id')}")
+        return True
 
-    if not app_secret:
-        return True  # desenvolvimento sem secret configurado
+    try:
+        app_secret = decrypt(raw_secret)
+    except Exception:
+        app_secret = raw_secret  # armazenado em texto puro (dev sem criptografia ainda)
 
     expected = "sha256=" + hmac.new(
         app_secret.encode(),
@@ -104,13 +115,11 @@ def _verify_signature(body: bytes, signature_header: str, clinic_cfg: dict) -> b
 
 
 async def _process_payload(payload: dict, clinic_id: str) -> None:
-    # Ignora notificações que não são de mensagem (ex.: account_update)
     if payload.get("object") != "whatsapp_business_account":
         return
 
     parsed = WhatsAppGateway.parse_incoming(payload)
     if parsed is None:
-        # Status update (delivered/read) ou payload não reconhecido
         return
 
     phone = parsed["from_phone"]

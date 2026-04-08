@@ -34,16 +34,5 @@ class Settings(BaseSettings):
     # Multi-tenant
     DEFAULT_CLINIC_ID: str = "00000000-0000-0000-0000-000000000001"
 
-    # WhatsApp / Meta
-    META_APP_SECRET: str
-    META_VERIFY_TOKEN: str
-    WHATSAPP_TOKEN: str
-    WHATSAPP_PHONE_NUMBER_ID: str
-    WHATSAPP_BUSINESS_ACCOUNT_ID: str
-
-    # Google Calendar
-    GOOGLE_CALENDAR_ID: str
-    GOOGLE_CREDENTIALS_PATH: str
-
 
 settings = Settings()

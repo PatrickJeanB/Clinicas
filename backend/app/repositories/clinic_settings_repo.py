@@ -20,6 +20,19 @@ class ClinicSettingsRepo:
         )
         return response.data[0] if response.data else None
 
+    async def get_by_verify_token(self, verify_token: str) -> dict | None:
+        """Localiza settings pelo verify_token (usado na verificação GET do webhook Meta)."""
+        client = await self._client()
+        response = (
+            await client.table("clinic_settings")
+            .select("*")
+            .eq("whatsapp_verify_token", verify_token)
+            .eq("whatsapp_configured", True)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
     async def get_by_phone_id(self, whatsapp_phone_id: str) -> dict | None:
         """Localiza settings pelo phone_number_id do WhatsApp (usado no roteamento do webhook)."""
         client = await self._client()

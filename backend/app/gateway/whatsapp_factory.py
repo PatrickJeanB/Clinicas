@@ -12,6 +12,7 @@ class WhatsAppClientFactory:
     async def get_client(self, clinic_id: str) -> WhatsAppGateway:
         """
         Retorna um WhatsAppGateway para a clínica.
+        Token e phone_id vêm exclusivamente do banco (clinic_settings).
         Cria e cacheia na primeira chamada; reutiliza nas seguintes.
         """
         if clinic_id in self._cache:
@@ -21,13 +22,12 @@ class WhatsAppClientFactory:
         if not creds or not creds.get("token") or not creds.get("phone_id"):
             raise ValueError(f"Credenciais WhatsApp não configuradas para clinic_id={clinic_id}")
 
-        raw_token = creds["token"]
         try:
-            token = decrypt(raw_token)
+            token = decrypt(creds["token"])
         except Exception:
-            token = raw_token  # token em texto puro (ambiente de desenvolvimento)
+            token = creds["token"]  # armazenado em texto puro (dev sem criptografia ainda)
 
-        phone_id = creds["phone_id"]  # phone_id não é criptografado
+        phone_id = creds["phone_id"]
 
         gateway = WhatsAppGateway(token=token, phone_id=phone_id)
         self._cache[clinic_id] = gateway
@@ -36,7 +36,7 @@ class WhatsAppClientFactory:
         return gateway
 
     def invalidate(self, clinic_id: str) -> None:
-        """Remove a instância do cache (chamar ao trocar credenciais)."""
+        """Remove a instância do cache (chamar ao trocar credenciais via PUT /settings/whatsapp)."""
         removed = self._cache.pop(clinic_id, None)
         if removed:
             logger.info(f"[WhatsAppFactory] cache invalidado para clinic_id={clinic_id}")
