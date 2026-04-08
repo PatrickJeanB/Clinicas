@@ -18,6 +18,7 @@ _WEEKDAYS_PT = {
 def system_prompt(
     patient: dict | None,
     upcoming_appointments: list[dict],
+    ai_name: str = "Assistente",
     clinic_info: dict | None = None,
 ) -> str:
     now = datetime.now(_BR_TZ)
@@ -29,10 +30,10 @@ def system_prompt(
     appointments_block = _build_appointments_block(upcoming_appointments)
     clinic_block = _build_clinic_block(clinic_info)
 
-    return f"""Você é Karen, a secretária virtual da clínica de psicologia. Você atende exclusivamente pelo WhatsApp.
+    return f"""Você é {ai_name}, a secretária virtual da clínica de psicologia. Você atende exclusivamente pelo WhatsApp.
 
 ## Identidade
-- Seu nome é Karen
+- Seu nome é {ai_name}
 - Você é profissional, acolhedora e objetiva
 - Fala sempre em português brasileiro
 - Usa linguagem simples, sem jargões técnicos

@@ -8,6 +8,7 @@ from app.core.exceptions import PatientNotFoundError
 
 class Patient(TypedDict):
     id: str
+    clinic_id: str
     name: str
     phone: str
     email: str | None
@@ -21,46 +22,45 @@ class PatientRepo:
     async def _client(self) -> AsyncClient:
         return await get_supabase()
 
-    async def get_by_phone(self, phone: str) -> Patient | None:
+    async def get_by_phone(self, phone: str, clinic_id: str) -> Patient | None:
         client = await self._client()
         response = (
             await client.table("patients")
             .select("*")
+            .eq("clinic_id", clinic_id)
             .eq("phone", phone)
             .limit(1)
             .execute()
         )
-        if not response.data:
-            return None
-        return response.data[0]
+        return response.data[0] if response.data else None
 
-    async def get_by_id(self, id: str) -> Patient | None:
+    async def get_by_id(self, id: str, clinic_id: str) -> Patient | None:
         client = await self._client()
         response = (
             await client.table("patients")
             .select("*")
+            .eq("clinic_id", clinic_id)
             .eq("id", id)
             .limit(1)
             .execute()
         )
-        if not response.data:
-            return None
-        return response.data[0]
+        return response.data[0] if response.data else None
 
-    async def create(self, name: str, phone: str, email: str | None = None) -> Patient:
+    async def create(self, name: str, phone: str, clinic_id: str, email: str | None = None) -> Patient:
         client = await self._client()
         response = (
             await client.table("patients")
-            .insert({"name": name, "phone": phone, "email": email, "is_active": True})
+            .insert({"clinic_id": clinic_id, "name": name, "phone": phone, "email": email, "is_active": True})
             .execute()
         )
         return response.data[0]
 
-    async def update(self, id: str, **kwargs) -> Patient:
+    async def update(self, id: str, clinic_id: str, **kwargs) -> Patient:
         client = await self._client()
         response = (
             await client.table("patients")
             .update(kwargs)
+            .eq("clinic_id", clinic_id)
             .eq("id", id)
             .execute()
         )
@@ -68,11 +68,12 @@ class PatientRepo:
             raise PatientNotFoundError(id)
         return response.data[0]
 
-    async def list_active(self) -> list[Patient]:
+    async def list_active(self, clinic_id: str) -> list[Patient]:
         client = await self._client()
         response = (
             await client.table("patients")
             .select("*")
+            .eq("clinic_id", clinic_id)
             .eq("is_active", True)
             .order("name")
             .execute()

@@ -4,19 +4,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from app.core.exceptions import WhatsAppError
 from app.core.logging import logger
-from app.core.settings import settings
 
 _BASE_URL = "https://graph.facebook.com/v19.0"
 
 
 class WhatsAppGateway:
-    def __init__(self) -> None:
+    def __init__(self, token: str, phone_id: str) -> None:
         self._headers = {
-            "Authorization": f"Bearer {settings.WHATSAPP_TOKEN}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        self._phone_id = settings.WHATSAPP_PHONE_NUMBER_ID
-        self._url = f"{_BASE_URL}/{self._phone_id}/messages"
+        self._phone_id = phone_id
+        self._url = f"{_BASE_URL}/{phone_id}/messages"
 
     # ------------------------------------------------------------------
     # Envio
@@ -79,10 +78,11 @@ class WhatsAppGateway:
         return True
 
     # ------------------------------------------------------------------
-    # Parsing
+    # Parsing (não depende de credenciais — pode ser chamado antes do login)
     # ------------------------------------------------------------------
 
-    def parse_incoming(self, payload: dict) -> dict | None:
+    @staticmethod
+    def parse_incoming(payload: dict) -> dict | None:
         """
         Extrai mensagem de um webhook payload da Meta.
         Retorna None se for status update (delivered, read, etc.).
@@ -99,7 +99,7 @@ class WhatsAppGateway:
             contact = change["contacts"][0]
             msg_type = message["type"]
 
-            content = self._extract_content(message, msg_type)
+            content = WhatsAppGateway._extract_content(message, msg_type)
 
             parsed = {
                 "message_id": message["id"],
@@ -119,23 +119,25 @@ class WhatsAppGateway:
             logger.warning(f"[WhatsApp] Payload inesperado: {exc} | payload={payload}")
             return None
 
-    def _extract_content(self, message: dict, msg_type: str) -> str:
+    @staticmethod
+    def _extract_content(message: dict, msg_type: str) -> str:
         """Extrai o conteúdo relevante dependendo do tipo."""
         if msg_type == "text":
             return message["text"]["body"]
-
         if msg_type == "audio":
             return message["audio"].get("id", "")
-
         if msg_type == "image":
             return message["image"].get("id", "")
-
         if msg_type == "document":
             return message["document"].get("id", "")
 
-        # Tipos não suportados (location, reaction, sticker…)
         logger.debug(f"[WhatsApp] Tipo não mapeado: {msg_type}")
         return ""
 
-
-whatsapp_gateway = WhatsAppGateway()
+    @staticmethod
+    def extract_phone_number_id(payload: dict) -> str | None:
+        """Extrai o phone_number_id do metadata do webhook (usado para roteamento multi-tenant)."""
+        try:
+            return payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
+        except (KeyError, IndexError):
+            return None

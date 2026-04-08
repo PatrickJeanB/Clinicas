@@ -7,6 +7,7 @@ from app.core.dependencies import get_supabase
 
 class Message(TypedDict):
     id: str
+    clinic_id: str
     patient_id: str
     direction: str          # "inbound" | "outbound"
     content: str
@@ -22,6 +23,7 @@ class MessageRepo:
     async def save(
         self,
         patient_id: str,
+        clinic_id: str,
         direction: str,
         content: str,
         message_type: str = "text",
@@ -32,6 +34,7 @@ class MessageRepo:
             await client.table("messages")
             .insert(
                 {
+                    "clinic_id": clinic_id,
                     "patient_id": patient_id,
                     "direction": direction,
                     "content": content,
@@ -43,11 +46,12 @@ class MessageRepo:
         )
         return response.data[0]
 
-    async def list_recent(self, patient_id: str, limit: int = 10) -> list[Message]:
+    async def list_recent(self, patient_id: str, clinic_id: str, limit: int = 10) -> list[Message]:
         client = await self._client()
         response = (
             await client.table("messages")
             .select("*")
+            .eq("clinic_id", clinic_id)
             .eq("patient_id", patient_id)
             .order("created_at", desc=True)
             .limit(limit)

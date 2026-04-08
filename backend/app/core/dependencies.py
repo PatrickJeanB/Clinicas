@@ -36,13 +36,6 @@ async def get_redis() -> aioredis.Redis:
     return _redis
 
 
-# ── WhatsApp Gateway ───────────────────────────────────────────────────
-def get_whatsapp():
-    """Retorna o singleton WhatsAppGateway. Import lazy para evitar ciclo."""
-    from app.gateway.whatsapp import whatsapp_gateway  # noqa: PLC0415
-    return whatsapp_gateway
-
-
 # ── Clinic Agent ───────────────────────────────────────────────────────
 def get_clinic_agent():
     """

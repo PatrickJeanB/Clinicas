@@ -12,7 +12,7 @@ _BR_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 class ContextBuilder:
-    async def build(self, phone: str) -> dict:
+    async def build(self, phone: str, clinic_id: str) -> dict:
         """
         Constrói o contexto completo para uma conversa.
 
@@ -24,7 +24,7 @@ class ContextBuilder:
             "current_datetime": str,   # ISO 8601 com timezone Brasil
         }
         """
-        patient, recent_messages, upcoming = await self._fetch_all(phone)
+        patient, recent_messages, upcoming = await self._fetch_all(phone, clinic_id)
 
         context = {
             "patient": patient,
@@ -34,30 +34,30 @@ class ContextBuilder:
         }
 
         logger.debug(
-            f"[Context] phone={phone} "
+            f"[Context] phone={phone} clinic={clinic_id} "
             f"patient={'sim' if patient else 'novo'} "
             f"msgs={len(recent_messages)} "
             f"consultas={len(upcoming)}"
         )
         return context
 
-    async def _fetch_all(self, phone: str) -> tuple:
-        patient = await patient_repo.get_by_phone(phone)
+    async def _fetch_all(self, phone: str, clinic_id: str) -> tuple:
+        patient = await patient_repo.get_by_phone(phone, clinic_id)
 
         if patient is None:
             return None, [], []
 
         # Busca histórico e consultas em paralelo
         recent_messages, upcoming = await asyncio.gather(
-            message_repo.list_recent(patient["id"], limit=10),
-            _safe_upcoming(phone),
+            message_repo.list_recent(patient["id"], clinic_id, limit=10),
+            _safe_upcoming(phone, clinic_id),
         )
         return patient, recent_messages, upcoming
 
 
-async def _safe_upcoming(phone: str) -> list:
+async def _safe_upcoming(phone: str, clinic_id: str) -> list:
     try:
-        return await appointment_service.list_upcoming(phone)
+        return await appointment_service.list_upcoming(phone, clinic_id)
     except Exception:
         return []
 

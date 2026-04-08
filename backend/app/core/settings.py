@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Criptografia
     ENCRYPTION_KEY: str
 
+    # Multi-tenant
+    DEFAULT_CLINIC_ID: str = "00000000-0000-0000-0000-000000000001"
+
     # WhatsApp / Meta
     META_APP_SECRET: str
     META_VERIFY_TOKEN: str

@@ -10,7 +10,8 @@ from app.agent.llm_router import llm_router
 from app.agent.prompts import system_prompt
 from app.core.exceptions import AppointmentConflictError, PatientNotFoundError
 from app.core.logging import logger
-from app.gateway.whatsapp import whatsapp_gateway
+from app.gateway.whatsapp_factory import whatsapp_factory
+from app.repositories.clinic_settings_repo import clinic_settings_repo
 from app.repositories.message_repo import message_repo
 from app.services.appointment_service import appointment_service
 from app.services.patient_service import patient_service
@@ -136,42 +137,47 @@ _TOOLS: list[dict] = [
 
 
 class ClinicAgent:
-    async def process(self, phone: str, messages: list[dict]) -> None:
+    async def process(self, phone: str, messages: list[dict], clinic_id: str) -> None:
         """
         Ponto de entrada chamado pelo MessageBuffer.
         messages: lista de parsed dicts vindos do WhatsApp.
+        clinic_id: tenant da clínica que recebeu as mensagens.
         """
-        logger.info(f"[Agent] processando {len(messages)} mensagem(ns) de {phone}")
+        logger.info(f"[Agent] processando {len(messages)} mensagem(ns) de {phone} clinic={clinic_id}")
 
-        # 1. Contexto
-        ctx = await context_builder.build(phone)
+        # 1. Busca configurações da clínica (ai_name, personalidade, etc.)
+        clinic_cfg = await clinic_settings_repo.get(clinic_id) or {}
 
-        # 2. Se paciente novo, tenta extrair nome da primeira mensagem
+        # 2. Contexto do paciente
+        ctx = await context_builder.build(phone, clinic_id)
+
+        # 3. Se paciente novo, tenta extrair nome da primeira mensagem
         patient = ctx["patient"]
         if patient is None:
             name = _extract_name_hint(messages)
-            patient, created = await patient_service.get_or_create(phone, name)
+            patient, created = await patient_service.get_or_create(phone, name, clinic_id)
             if created:
-                logger.info(f"[Agent] novo paciente cadastrado: {phone}")
+                logger.info(f"[Agent] novo paciente cadastrado: {phone} clinic={clinic_id}")
             ctx["patient"] = patient
 
-        # 3. Salva mensagens inbound no banco
+        # 4. Salva mensagens inbound no banco
         for msg in messages:
-            await _save_inbound(patient["id"], msg)
+            await _save_inbound(patient["id"], clinic_id, msg)
 
-        # 4. Monta histórico para o LLM
+        # 5. Monta histórico para o LLM
         conversation = _build_conversation(ctx, messages)
         sys_prompt = system_prompt(
             patient=ctx["patient"],
             upcoming_appointments=ctx["upcoming_appointments"],
+            ai_name=clinic_cfg.get("ai_name", "Assistente"),
         )
 
-        # 5. Loop de tool use
-        reply_text = await self._agent_loop(sys_prompt, conversation, phone, patient)
+        # 6. Loop de tool use
+        reply_text = await self._agent_loop(sys_prompt, conversation, phone, patient, clinic_id)
 
-        # 6. Humaniza e envia
+        # 7. Humaniza e envia
         if reply_text:
-            await self._send_humanized(phone, patient["id"], reply_text)
+            await self._send_humanized(phone, patient["id"], clinic_id, reply_text)
 
     # ------------------------------------------------------------------
     # Loop de ferramentas
@@ -183,6 +189,7 @@ class ClinicAgent:
         conversation: list[dict],
         phone: str,
         patient: dict,
+        clinic_id: str,
     ) -> str:
         messages: list[dict] = [{"role": "system", "content": sys_prompt}] + conversation
 
@@ -200,10 +207,9 @@ class ClinicAgent:
 
             # Tool calls — executa e continua o loop
             tool_result_msgs = await self._execute_tool_calls(
-                result["tool_calls"], phone, patient
+                result["tool_calls"], phone, patient, clinic_id
             )
 
-            # Adiciona a mensagem do assistente com tool_calls
             messages.append(
                 {
                     "role": "assistant",
@@ -231,10 +237,10 @@ class ClinicAgent:
     # ------------------------------------------------------------------
 
     async def _execute_tool_calls(
-        self, tool_calls: list[dict], phone: str, patient: dict
+        self, tool_calls: list[dict], phone: str, patient: dict, clinic_id: str
     ) -> list[dict]:
         tasks = [
-            self._execute_single_tool(tc["id"], tc["name"], tc["arguments"], phone, patient)
+            self._execute_single_tool(tc["id"], tc["name"], tc["arguments"], phone, patient, clinic_id)
             for tc in tool_calls
         ]
         return await asyncio.gather(*tasks)
@@ -246,10 +252,11 @@ class ClinicAgent:
         args: dict,
         phone: str,
         patient: dict,
+        clinic_id: str,
     ) -> dict:
-        logger.info(f"[Agent] tool={name} args={args}")
+        logger.info(f"[Agent] tool={name} args={args} clinic={clinic_id}")
         try:
-            output = await self._dispatch(name, args, phone, patient)
+            output = await self._dispatch(name, args, phone, patient, clinic_id)
         except (PatientNotFoundError, AppointmentConflictError) as exc:
             output = {"error": exc.message}
         except Exception as exc:
@@ -263,15 +270,16 @@ class ClinicAgent:
         }
 
     async def _dispatch(
-        self, name: str, args: dict, phone: str, patient: dict
+        self, name: str, args: dict, phone: str, patient: dict, clinic_id: str
     ) -> Any:
         if name == "check_availability":
-            available = await appointment_service.check_availability(args["datetime_str"])
+            available = await appointment_service.check_availability(args["datetime_str"], clinic_id)
             return {"available": available, "datetime": args["datetime_str"]}
 
         if name == "book_appointment":
             appt = await appointment_service.book(
                 patient_phone=phone,
+                clinic_id=clinic_id,
                 datetime_str=args["datetime_str"],
                 notes=args.get("notes"),
             )
@@ -280,21 +288,23 @@ class ClinicAgent:
         if name == "reschedule_appointment":
             appt = await appointment_service.reschedule(
                 appointment_id=args["appointment_id"],
+                clinic_id=clinic_id,
                 new_datetime_str=args["new_datetime_str"],
             )
             return {"success": True, "appointment": appt}
 
         if name == "cancel_appointment":
-            appt = await appointment_service.cancel(args["appointment_id"])
+            appt = await appointment_service.cancel(args["appointment_id"], clinic_id)
             return {"success": True, "appointment": appt}
 
         if name == "list_upcoming_appointments":
-            appointments = await appointment_service.list_upcoming(phone)
+            appointments = await appointment_service.list_upcoming(phone, clinic_id)
             return {"appointments": appointments}
 
         if name == "register_patient":
             updated = await patient_service.update_profile(
                 phone,
+                clinic_id,
                 name=args["name"],
                 email=args.get("email"),
             )
@@ -307,22 +317,25 @@ class ClinicAgent:
     # ------------------------------------------------------------------
 
     async def _send_humanized(
-        self, phone: str, patient_id: str, text: str
+        self, phone: str, patient_id: str, clinic_id: str, text: str
     ) -> None:
         blocks = split_response(text)
         timed = add_delay(blocks)
 
+        wapp = await whatsapp_factory.get_client(clinic_id)
+
         for message, delay in timed:
             if delay > 0:
                 await asyncio.sleep(delay)
-            await whatsapp_gateway.send_text(phone, message)
+            await wapp.send_text(phone, message)
             await message_repo.save(
                 patient_id=patient_id,
+                clinic_id=clinic_id,
                 direction="outbound",
                 content=message,
                 message_type="text",
             )
-            logger.debug(f"[Agent] bloco enviado → {phone} ({len(message)} chars)")
+            logger.debug(f"[Agent] bloco enviado → {phone} ({len(message)} chars) clinic={clinic_id}")
 
 
 # ------------------------------------------------------------------
@@ -362,10 +375,11 @@ def _build_conversation(ctx: dict, new_messages: list[dict]) -> list[dict]:
     return history
 
 
-async def _save_inbound(patient_id: str, msg: dict) -> None:
+async def _save_inbound(patient_id: str, clinic_id: str, msg: dict) -> None:
     try:
         await message_repo.save(
             patient_id=patient_id,
+            clinic_id=clinic_id,
             direction="inbound",
             content=msg.get("content", ""),
             message_type=msg.get("message_type", "text"),
