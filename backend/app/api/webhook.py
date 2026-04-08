@@ -9,6 +9,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agent.buffer import message_buffer
+from app.core.dependencies import get_redis
 from app.core.encryption import decrypt
 from app.core.logging import logger
 from app.gateway.whatsapp import WhatsAppGateway
@@ -61,37 +62,56 @@ async def webhook_receive(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> Response:
-    body = await request.body()
-
-    # Extrai phone_number_id do payload para roteamento multi-tenant
     try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        logger.warning("[Webhook] Payload não é JSON válido")
+        body = await request.body()
+
+        # Extrai phone_number_id do payload para roteamento multi-tenant
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            logger.warning("[Webhook] Payload não é JSON válido")
+            return Response(status_code=200)
+
+        phone_number_id = WhatsAppGateway.extract_phone_number_id(payload)
+        if not phone_number_id:
+            logger.warning("[Webhook] phone_number_id não encontrado no payload")
+            return Response(status_code=200)
+
+        # Localiza a clínica pelo phone_number_id
+        clinic_cfg = await clinic_settings_repo.get_by_phone_id(phone_number_id)
+        if not clinic_cfg:
+            logger.warning(f"[Webhook] Clínica não encontrada para phone_number_id={phone_number_id}")
+            return Response(status_code=200)
+
+        clinic_id = clinic_cfg["clinic_id"]
+
+        # Valida assinatura HMAC com o app_secret da clínica (sem fallback)
+        signature_header = request.headers.get("X-Hub-Signature-256", "")
+        if not _verify_signature(body, signature_header, clinic_cfg):
+            logger.warning(f"[Webhook] Assinatura HMAC inválida — clinic={clinic_id}")
+            return Response(status_code=403)
+
+        # Parse antecipado para deduplicação por message_id
+        parsed = WhatsAppGateway.parse_incoming(payload)
+        if parsed:
+            message_id = parsed.get("message_id")
+            if message_id:
+                redis = await get_redis()
+                dedup_key = f"processed:{message_id}"
+                if await redis.exists(dedup_key):
+                    logger.warning(
+                        f"[Webhook] Mensagem duplicada ignorada — message_id={message_id}"
+                    )
+                    return Response(status_code=200)
+                await redis.set(dedup_key, "1", ex=86400)  # TTL: 24 horas
+
+        # Responde 200 IMEDIATAMENTE e processa em background
+        background_tasks.add_task(_process_payload, parsed, clinic_id)
         return Response(status_code=200)
 
-    phone_number_id = WhatsAppGateway.extract_phone_number_id(payload)
-    if not phone_number_id:
-        logger.warning("[Webhook] phone_number_id não encontrado no payload")
+    except Exception:
+        logger.exception("[Webhook] Erro inesperado no processamento — retornando 200 para Meta")
         return Response(status_code=200)
-
-    # Localiza a clínica pelo phone_number_id
-    clinic_cfg = await clinic_settings_repo.get_by_phone_id(phone_number_id)
-    if not clinic_cfg:
-        logger.warning(f"[Webhook] Clínica não encontrada para phone_number_id={phone_number_id}")
-        return Response(status_code=200)  # nunca retornar erro para a Meta
-
-    clinic_id = clinic_cfg["clinic_id"]
-
-    # Valida assinatura HMAC com o app_secret da clínica (sem fallback)
-    signature_header = request.headers.get("X-Hub-Signature-256", "")
-    if not _verify_signature(body, signature_header, clinic_cfg):
-        logger.warning(f"[Webhook] Assinatura HMAC inválida — clinic={clinic_id}")
-        raise HTTPException(status_code=403, detail="Assinatura inválida")
-
-    # Responde 200 IMEDIATAMENTE e processa em background
-    background_tasks.add_task(_process_payload, payload, clinic_id)
-    return Response(status_code=200)
 
 
 # ------------------------------------------------------------------
@@ -121,11 +141,7 @@ def _verify_signature(body: bytes, signature_header: str, clinic_cfg: dict) -> b
     return hmac.compare_digest(expected, signature_header)
 
 
-async def _process_payload(payload: dict, clinic_id: str) -> None:
-    if payload.get("object") != "whatsapp_business_account":
-        return
-
-    parsed = WhatsAppGateway.parse_incoming(payload)
+async def _process_payload(parsed: dict | None, clinic_id: str) -> None:
     if parsed is None:
         return
 
