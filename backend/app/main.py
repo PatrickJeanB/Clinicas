@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from app.core.exceptions import KarenException
 from app.core.logging import logger
@@ -27,6 +28,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# SlowAPI requer o limiter registrado em app.state antes do middleware
+_limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = _limiter
 
 _allowed_origins = (
     ["*"]
