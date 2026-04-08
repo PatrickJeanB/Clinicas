@@ -51,10 +51,12 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 
 
 # Rotas
-from app.api import health, webhook, doctor  # noqa: E402
+from app.api import auth, doctor, health, settings_api, webhook  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(webhook.router)
+app.include_router(auth.router)
+app.include_router(settings_api.router)
 app.include_router(doctor.router, prefix="/doctor")
 
 # Inicializa o agente — registra handler no buffer
