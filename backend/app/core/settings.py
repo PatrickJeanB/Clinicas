@@ -37,5 +37,8 @@ class Settings(BaseSettings):
     # Frontend URL (necessário para CORS em produção)
     FRONTEND_URL: str = ""
 
+    # Admin
+    ADMIN_SECRET_KEY: str
+
 
 settings = Settings()
